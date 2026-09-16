@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { classInclude } from "@/lib/classes";
 import { fmtDate, fmtDuration, fmtTime } from "@/lib/time";
 import { Page } from "@/components/Nav";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Preparing } from "./Preparing";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,12 @@ export default async function RecordingPage({ params }: { params: Promise<{ clas
         {fmtDate(cls.startAt, user.timezone)} · {fmtTime(cls.startAt, user.timezone)} · {cls.mentor.name} with {cls.student.name}
         {rec?.durationSec ? ` · ${fmtDuration(rec.durationSec)}` : ""}
       </p>
-      <h1 className="mb-8">{cls.title}</h1>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <h1>{cls.title}</h1>
+        {rec && <DeleteButton url={`/api/recordings/${classId}`} confirm={`Delete this recording permanently?
+
+The video file is removed from storage. The class itself stays.`} done="Recording deleted." label="Delete recording" />}
+      </div>
 
       {!rec || cls.status !== "COMPLETED" ? (
         <p className="card text-neutral-500">There's no recording for this class.</p>

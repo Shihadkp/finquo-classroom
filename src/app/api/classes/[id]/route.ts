@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { type Ctx, fail, handle, ok, readJson } from "@/lib/api";
 import { assertBookable, classInclude, loadClassFor } from "@/lib/classes";
+import { deleteClass } from "@/lib/deleteClass";
 import { CLASS_MINUTES } from "@/lib/rules";
 
 export const GET = handle(async (_req: Request, { params }: Ctx<{ id: string }>) => {
@@ -53,4 +54,20 @@ export const PATCH = handle(async (req: Request, { params }: Ctx<{ id: string }>
 
   const updated = await db.class.update({ where: { id }, data, include: classInclude });
   return ok(updated);
+});
+
+/**
+ * Permanently delete a class and its recording. Admin only, and never for a class that is
+ * currently running — end it first, so nobody is mid-call when the row disappears.
+ */
+export const DELETE = handle(async (_req: Request, { params }: Ctx<{ id: string }>) => {
+  const user = await requireUser("ADMIN");
+  const { id } = await params;
+  const cls = await loadClassFor(user, id);
+  const now = Date.now();
+  if (cls.status === "SCHEDULED" && cls.startAt.getTime() <= now && cls.endAt.getTime() > now) {
+    return fail(409, "This class is live. End it before deleting.");
+  }
+  await deleteClass(id);
+  return ok({ id });
 });

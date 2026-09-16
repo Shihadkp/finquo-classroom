@@ -6,6 +6,7 @@ import { scopeFor } from "@/lib/classes";
 import { fmtDateTime, fmtDuration, fmtTime } from "@/lib/time";
 import { Page } from "@/components/Nav";
 import { Avatar, Empty, Icon, Panel, Stat, fmtBytes } from "@/components/ui";
+import { DeleteButton } from "@/components/DeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -106,13 +107,22 @@ export default async function RecordingsPage() {
                         {r.durationSec ? ` · ${fmtDuration(r.durationSec)}` : ""}{r.sizeBytes ? ` · ${fmtBytes(r.sizeBytes)}` : ""}
                       </span>
                     </span>
-                    {r.status === "READY" ? (
-                      <Link href={`/recordings/${c.id}`} className="btn-primary py-2 text-xs">Watch</Link>
-                    ) : r.status === "FAILED" ? (
-                      <span className="text-xs text-red-600">{user.role === "ADMIN" ? "Failed · retry from Overview" : "Unavailable"}</span>
-                    ) : (
-                      <Link href={`/recordings/${c.id}`} className="btn-ghost py-2 text-xs">Preparing…</Link>
-                    )}
+                    <span className="flex items-center gap-2">
+                      {r.status === "READY" ? (
+                        <Link href={`/recordings/${c.id}`} className="btn-primary py-2 text-xs">Watch</Link>
+                      ) : r.status === "FAILED" ? (
+                        <span className="text-xs text-red-600">Failed · retry from Overview</span>
+                      ) : (
+                        <Link href={`/recordings/${c.id}`} className="btn-ghost py-2 text-xs">Preparing…</Link>
+                      )}
+                      <DeleteButton
+                        url={`/api/recordings/${c.id}`}
+                        confirm={`Delete the recording for "${c.title}" permanently?
+
+The video file is removed from storage. The class itself stays.`}
+                        done="Recording deleted."
+                      />
+                    </span>
                   </li>
                 );
               })}

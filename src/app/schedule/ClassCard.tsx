@@ -10,6 +10,7 @@ import { fmtDateTime, fmtTime } from "@/lib/time";
 import { useApi } from "@/components/Toast";
 import { Avatar } from "@/components/ui";
 import { CopyLink } from "@/components/CopyLink";
+import { DeleteButton } from "@/components/DeleteButton";
 
 const STATUS_STYLE: Record<ClassDTO["status"], string> = {
   SCHEDULED: "bg-accent-soft text-accent",
@@ -82,6 +83,17 @@ export function ClassCard({ cls, user, live }: { cls: ClassDTO; user: SessionUse
             <Link href={`/schedule/new?reschedule=${cls.id}`} className="btn-ghost">Reschedule</Link>
             <button onClick={cancel} className="btn-danger">Cancel</button>
           </>
+        )}
+        {/* Cancel keeps the record; delete removes it and its recording for good. Admins only. */}
+        {user.role === "ADMIN" && !live && (
+          <DeleteButton
+            url={`/api/classes/${cls.id}`}
+            confirm={`Delete "${cls.title}" permanently?
+
+This also deletes its recording. Cancel instead if you want to keep the record.`}
+            done="Class deleted."
+            className="btn-ghost px-3 py-2 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-600"
+          />
         )}
       </div>
     </article>

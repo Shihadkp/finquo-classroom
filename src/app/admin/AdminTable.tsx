@@ -45,6 +45,18 @@ export function AdminTable({ classes, mentors, user }: { classes: ClassDTO[]; me
   async function retry(id: string) {
     if (await api(`/api/recordings/${id}/retry`, { method: "POST" })) { toast("Transcode queued.", "ok"); router.refresh(); }
   }
+  /** Permanent: removes the class row and any recorded video. Cancel instead if you want to keep the history. */
+  async function destroy(c: ClassDTO) {
+    if (!confirm(`Delete "${c.title}" (${c.mentor.name} with ${c.student.name}) permanently?
+
+This also deletes its recording. Cancelling instead keeps the record.`)) return;
+    if (await api(`/api/classes/${c.id}`, { method: "DELETE" })) { toast("Class deleted.", "ok"); router.refresh(); }
+  }
+  async function destroyRecording(c: ClassDTO) {
+    if (!confirm(`Delete the recording for "${c.title}" permanently? The class itself stays.`)) return;
+    if (await api(`/api/recordings/${c.id}`, { method: "DELETE" })) { toast("Recording deleted.", "ok"); router.refresh(); }
+  }
+
   /** Testing aid: move a scheduled class to start right now (rules bypassed except overlap). */
   async function startNow(id: string) {
     const startAt = new Date(Math.floor(now / 60_000) * 60_000).toISOString();
@@ -146,13 +158,17 @@ export function AdminTable({ classes, mentors, user }: { classes: ClassDTO[]; me
                         <span className={`pill ${REC_STYLE[c.recording.status]}`} title={c.recording.error ?? undefined}>{c.recording.status.toLowerCase()}</span>
                         {c.recording.status === "FAILED" && <button onClick={() => retry(c.id)} className="text-xs font-semibold text-accent hover:underline">Retry</button>}
                         {c.recording.status === "READY" && <Link href={`/recordings/${c.id}`} className="text-xs font-semibold text-accent hover:underline">Watch</Link>}
+                        <button onClick={() => destroyRecording(c)} className="text-xs text-neutral-400 hover:text-red-600" title="Delete recording">✕</button>
                       </span>
                     ) : <span className="text-neutral-300">—</span>}
                   </td>
                   <td className="td text-right">
-                    {c.status === "SCHEDULED" && new Date(c.startAt).getTime() > now && (
-                      <button onClick={() => startNow(c.id)} className="text-xs font-semibold text-neutral-500 hover:text-accent">Start now</button>
-                    )}
+                    <span className="flex justify-end gap-3">
+                      {c.status === "SCHEDULED" && new Date(c.startAt).getTime() > now && (
+                        <button onClick={() => startNow(c.id)} className="text-xs font-semibold text-neutral-500 hover:text-accent">Start now</button>
+                      )}
+                      <button onClick={() => destroy(c)} className="text-xs font-semibold text-neutral-400 hover:text-red-600" title="Delete class permanently">Delete</button>
+                    </span>
                   </td>
                 </tr>
               ))}
