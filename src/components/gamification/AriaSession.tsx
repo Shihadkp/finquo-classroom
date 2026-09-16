@@ -82,6 +82,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [ended, setEnded] = useState<{ summary: Summary | null; fluency: number | null; xp: number; xpParts: { source: string; amount: number }[] } | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [typed, setTyped] = useState("");
   const supported = !!recognitionCtor();
 
   const rec = useRef<Rec | null>(null);
@@ -250,10 +251,10 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const listenAfterVoice = useCallback(() => {
     const tick = () => {
       if (!vadRef.current || endedRef.current) return;
-      if (voiceBusy()) return void setTimeout(tick, 200);
+      if (voiceBusy()) return void setTimeout(tick, 50);
       startListening(false);
     };
-    setTimeout(tick, 200);
+    tick();
   }, [startListening]);
 
   // Hold spacebar to talk (when not typing in an input).
@@ -362,6 +363,20 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
             <button type="button" onClick={end} disabled={!session || !!ended} className="btn-ghost">End session</button>
           </div>
           {vad && <p className="mt-3 text-center text-xs text-neutral-400">Auto mode: just start talking to interrupt {COACH.name}. The mic reopens on its own when she finishes.</p>}
+          <form
+            className="mt-4 flex gap-2 border-t border-neutral-100 pt-4"
+            onSubmit={(e) => { e.preventDefault(); const t = typed.trim(); if (!t || !session) return; setTyped(""); interrupt(); void send(t, 0); }}
+          >
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              className="input text-sm"
+              placeholder={`Misheard you? Type it instead and press Enter.`}
+              aria-label={`Type a message to ${COACH.name}`}
+              disabled={!session || !!ended}
+            />
+            <button type="submit" className="btn-ghost text-xs" disabled={!typed.trim() || !session || !!ended}>Send</button>
+          </form>
         </div>
         <Panel title="Transcript">
           <TranscriptPanel turns={turns} partial={partial} streaming={streaming} name={user.name} />

@@ -3,7 +3,7 @@
 // One controller for all four games: start → play (autosave, hints, submit) → review. Server owns the clock, the rules and the solution.
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { SessionUser } from "@/lib/auth";
 import type { AttemptView } from "@/lib/gamification/service";
 import type { GameId } from "@/lib/gamification/puzzles/types";
@@ -14,11 +14,10 @@ import {
   emptyCrossclimb, emptyPinpoint, emptyQueens, emptyTango,
   type CrossclimbPublic, type CrossclimbState, type PinpointPublic, type PinpointState, type QueensPublic, type QueensState, type TangoPublic, type TangoState,
 } from "./boards";
+import { repair } from "./boardState";
 
 type Result = { attempt: AttemptView; correct: boolean; xp: { source: string; amount: number }[]; levelChange?: number };
 type Meta = { name: string; blurb: string; emoji: string };
-
-const isEmpty = (s: unknown) => !s || (typeof s === "object" && Object.keys(s as object).length === 0);
 
 /** Board state → the answer shape the server verifies / hints against. */
 function toAnswer(game: GameId, state: unknown, guess?: string) {
@@ -33,7 +32,7 @@ export function GamePlay({ game, meta, level, initial, user }: { game: GameId; m
   const toast = useToast();
   const router = useRouter();
   const [attempt, setAttempt] = useState<AttemptView | null>(initial);
-  const [state, setState] = useState<unknown>(initial?.state ?? null);
+  const [state, setState] = useState<unknown>(() => (initial ? repair(game, initial.puzzle, initial.state) : null));
   const [result, setResult] = useState<Result | null>(null);
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -42,18 +41,11 @@ export function GamePlay({ game, meta, level, initial, user }: { game: GameId; m
 
   const post = useCallback(<T,>(action: string, extra: Record<string, unknown> = {}) => api<T>("/api/gamification/brain/attempt", { method: "POST", json: { game, action, ...extra } }), [api, game]);
 
-  // Fresh boards get an empty state shaped for the game once the puzzle is known.
-  useEffect(() => {
-    if (!attempt || !isEmpty(attempt.state) || state) return;
-    const p = attempt.puzzle;
-    setState(game === "queens" ? emptyQueens((p as QueensPublic).n) : game === "tango" ? emptyTango(p as TangoPublic) : game === "crossclimb" ? emptyCrossclimb(p as CrossclimbPublic) : emptyPinpoint());
-  }, [attempt, game, state]);
-
   async function start() {
     setBusy(true);
     const a = await post<AttemptView>("start");
     setBusy(false);
-    if (a) { setAttempt(a); setState(isEmpty(a.state) ? null : a.state); }
+    if (a) { setAttempt(a); setState(repair(game, a.puzzle, a.state)); }
   }
 
   /** Autosave partial progress (debounced) so a reload resumes with the same clock. */
@@ -133,9 +125,9 @@ export function GamePlay({ game, meta, level, initial, user }: { game: GameId; m
   const over = attempt.status !== "IN_PROGRESS";
   const sol = over ? attempt.solution : null;
   const p = attempt.puzzle;
-  const canVerify = !!state && (game === "queens" ? (state as QueensState).queens.every((q) => q !== null)
-    : game === "tango" ? (state as TangoState).grid.every((r) => r.every((v) => v !== null))
-    : game === "crossclimb" ? (state as CrossclimbState).answers.every((a) => a.length >= 3) : false);
+  const canVerify = !over && !!state && (game === "queens" ? !!(state as QueensState).queens?.every((q) => q !== null)
+    : game === "tango" ? !!(state as TangoState).grid?.every((r) => r?.every((v) => v !== null))
+    : game === "crossclimb" ? !!(state as CrossclimbState).answers?.every((a) => a.length >= 3) : false);
 
   return (
     <div className="space-y-5">

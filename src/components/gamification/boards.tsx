@@ -4,25 +4,23 @@
 // and switches to a read-only "review" rendering when `solution` is present. `state.flash` pulses one cell after a hint.
 
 import { useState } from "react";
+import {
+  emptyCrossclimb, emptyPinpoint, emptyQueens, emptyTango, oneLetterApart, queensConflicts, tangoConflicts,
+  type CrossclimbPublic, type CrossclimbState, type PinpointPublic, type PinpointState,
+  type QueensPublic, type QueensState, type TangoPublic, type TangoState,
+} from "./boardState";
+
+// Re-exported so existing imports from "./boards" keep working.
+export {
+  emptyCrossclimb, emptyPinpoint, emptyQueens, emptyTango, queensConflicts, tangoConflicts,
+  type CrossclimbPublic, type CrossclimbState, type PinpointPublic, type PinpointState,
+  type QueensPublic, type QueensState, type TangoPublic, type TangoState,
+};
 
 const REGION_COLORS = ["#ede9fe", "#dcfce7", "#fef3c7", "#fee2e2", "#dbeafe", "#fce7f3", "#ccfbf1", "#ffedd5", "#e0e7ff", "#f3f4f6"];
 
 // ─── Queens ──────────────────────────────────────────────────────────────────
-export type QueensPublic = { n: number; regions: number[][] };
-export type QueensState = { queens: (number | null)[]; xs: string[]; flash?: string };
-export const emptyQueens = (n: number): QueensState => ({ queens: Array(n).fill(null), xs: [] });
 
-export function queensConflicts(p: QueensPublic, q: (number | null)[]) {
-  const bad = new Set<number>();
-  q.forEach((c, r) => {
-    if (c === null) return;
-    q.forEach((c2, r2) => {
-      if (r2 === r || c2 === null) return;
-      if (c2 === c || p.regions[r][c] === p.regions[r2][c2] || (Math.abs(r - r2) === 1 && Math.abs(c - c2) === 1)) { bad.add(r); bad.add(r2); }
-    });
-  });
-  return bad;
-}
 
 export function QueensBoard({ puzzle, state, solution, onChange }: { puzzle: QueensPublic; state: QueensState; solution?: { queens: number[] } | null; onChange?: (s: QueensState) => void }) {
   const [tool, setTool] = useState<"cycle" | "queen" | "x">("cycle");
@@ -75,25 +73,7 @@ export function QueensBoard({ puzzle, state, solution, onChange }: { puzzle: Que
 }
 
 // ─── Tango ───────────────────────────────────────────────────────────────────
-export type TangoPublic = { n: number; givens: (0 | 1 | null)[][]; constraints: { a: [number, number]; b: [number, number]; kind: "eq" | "x" }[] };
-export type TangoState = { grid: (0 | 1 | null)[][]; flash?: string };
-export const emptyTango = (p: TangoPublic): TangoState => ({ grid: p.givens.map((r) => [...r]) });
 
-export function tangoConflicts(g: (0 | 1 | null)[][]) {
-  const bad = new Set<string>();
-  const n = g.length;
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const v = g[r][c]; if (v === null) continue;
-    if (c >= 2 && g[r][c - 1] === v && g[r][c - 2] === v) [c, c - 1, c - 2].forEach((x) => bad.add(`${r},${x}`));
-    if (r >= 2 && g[r - 1][c] === v && g[r - 2][c] === v) [r, r - 1, r - 2].forEach((y) => bad.add(`${y},${c}`));
-  }
-  for (let i = 0; i < n; i++) {
-    const row = g[i].filter((v) => v !== null), col = g.map((r) => r[i]).filter((v) => v !== null);
-    if (row.filter((v) => v === 0).length > n / 2 || row.filter((v) => v === 1).length > n / 2) for (let c = 0; c < n; c++) bad.add(`${i},${c}`);
-    if (col.filter((v) => v === 0).length > n / 2 || col.filter((v) => v === 1).length > n / 2) for (let r = 0; r < n; r++) bad.add(`${r},${i}`);
-  }
-  return bad;
-}
 
 export function TangoBoard({ puzzle, state, solution, onChange }: { puzzle: TangoPublic; state: TangoState; solution?: { grid: (0 | 1)[][] } | null; onChange?: (s: TangoState) => void }) {
   const n = puzzle.n;
@@ -133,11 +113,7 @@ export function TangoBoard({ puzzle, state, solution, onChange }: { puzzle: Tang
 }
 
 // ─── Crossclimb ──────────────────────────────────────────────────────────────
-export type CrossclimbPublic = { clues: string[] };
-export type CrossclimbState = { answers: string[]; order: number[]; flash?: string };
-export const emptyCrossclimb = (p: CrossclimbPublic): CrossclimbState => ({ answers: p.clues.map(() => ""), order: p.clues.map((_, i) => i) });
 
-const oneLetterApart = (a: string, b: string) => a.length === b.length && a.length > 0 && [...a].filter((ch, i) => ch !== b[i]).length === 1;
 
 export function CrossclimbBoard({ puzzle, state, solution, onChange }: { puzzle: CrossclimbPublic; state: CrossclimbState; solution?: { words: string[]; order: number[] } | null; onChange?: (s: CrossclimbState) => void }) {
   // Tolerate a state saved by an older build: never assume the arrays are there.
@@ -195,9 +171,6 @@ export function CrossclimbBoard({ puzzle, state, solution, onChange }: { puzzle:
 }
 
 // ─── Pinpoint ────────────────────────────────────────────────────────────────
-export type PinpointPublic = { words: string[] };
-export type PinpointState = { guesses: string[]; guess: string; letter?: string; letters?: number; flash?: string };
-export const emptyPinpoint = (): PinpointState => ({ guesses: [], guess: "" });
 
 export function PinpointBoard({ puzzle, state, revealed, solution, onChange, onGuess }: { puzzle: PinpointPublic; revealed: number; state: PinpointState; solution?: { category: string } | null; onChange?: (s: PinpointState) => void; onGuess?: (guess: string) => void }) {
   const shown = solution ? puzzle.words.length : Math.min(puzzle.words.length, revealed);
