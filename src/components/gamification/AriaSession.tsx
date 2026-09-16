@@ -45,6 +45,12 @@ const TZ_LANG: Record<string, string> = {
   "Asia/Singapore": "en-SG", "Africa/Johannesburg": "en-ZA", "Africa/Lagos": "en-NG", "Asia/Manila": "en-PH",
 };
 const defaultLang = (tz: string) => TZ_LANG[tz] ?? (tz.startsWith("Asia/") ? "en-IN" : tz.startsWith("Europe/") ? "en-GB" : "en-US");
+// Quo is written as "she", so prefer a female voice; Windows ships male-first for some accents
+// (en-IN lists Ravi before Heera), which is why the accent match alone picked the wrong one.
+const FEMALE = /female|aria|jenny|zira|heera|neerja|samantha|swara|kalpana|eva|hazel|susan|catherine|linda|michelle|sonia|libby|natasha/i;
+const MALE = /male|ravi|prabhat|mark|david|george|guy|ryan|william|james|daniel|alex|fred|thomas|tony/i;
+const femaleFirst = (list: SpeechSynthesisVoice[]) =>
+  list.find((v) => FEMALE.test(v.name)) ?? list.find((v) => !MALE.test(v.name)) ?? list[0];
 const PREFERRED = /Google US English|Microsoft Aria|Microsoft Jenny|Samantha|Google UK English Female|Microsoft Zira/i;
 
 /** Voices arrive asynchronously in Chrome; resolve once the list is non-empty (or after a short timeout). */
@@ -97,17 +103,29 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const finalText = useRef("");
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const rateRef = useRef(1);
+  const speakToken = useRef(0);
   const endedRef = useRef(false);
   const silence = useRef<ReturnType<typeof setTimeout> | null>(null);
   const langRef = useRef(defaultLang(user.timezone));
 
   // ── Voice out ──────────────────────────────────────────────────────────────
-  // Chrome occasionally ignores a lone cancel() while utterances are still queued; a second call a beat later is reliable.
-  const stopVoice = useCallback(() => { utterances.current = []; const s = window.speechSynthesis; s?.cancel(); setTimeout(() => s?.cancel(), 60); }, []);
+  /**
+   * Chrome sometimes ignores a lone cancel() while utterances are queued, so a second one follows a
+   * beat later. That straggler must not kill speech queued in between — "Repeat" and the voice sample
+   * both call stopVoice() then speak() immediately. The token voids the pending cancel when that happens.
+   */
+  const stopVoice = useCallback(() => {
+    utterances.current = [];
+    const s = window.speechSynthesis;
+    s?.cancel();
+    const token = ++speakToken.current;
+    setTimeout(() => { if (speakToken.current === token) s?.cancel(); }, 60);
+  }, []);
 
   const speak = useCallback((text: string) => {
     const s = window.speechSynthesis;
     if (!text.trim() || !s) return;
+    speakToken.current++; // new speech: any pending stray cancel no longer applies
     const u = new SpeechSynthesisUtterance(text);
     u.rate = rateRef.current; u.lang = voiceRef.current?.lang ?? "en-US";
     if (voiceRef.current) u.voice = voiceRef.current;
@@ -130,11 +148,14 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
 
   const voiceBusy = () => { const s = window.speechSynthesis; return !!s && (s.speaking || s.pending); };
 
-  // Load voices once; restore the saved choice or pick a sensible English default.
-  useEffect(() => {
-    let alive = true;
-    loadVoices().then((all) => {
-      if (!alive) return;
+  /**
+   * Resolves once Quo's voice is chosen. Memoised so the picker and the opening line share one
+   * result — previously they each loaded voices independently and the opener could win the race,
+   * speaking the first sentence in the browser's default voice before switching.
+   */
+  const voicePicked = useRef<Promise<void> | null>(null);
+  const ensureVoice = useCallback(() => {
+    if (!voicePicked.current) voicePicked.current = loadVoices().then((all) => {
       const en = all.filter((v) => v.lang.toLowerCase().startsWith("en"));
       const list = en.length ? en : all;
       setVoices(list);
@@ -145,15 +166,22 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
         const l = localStorage.getItem(LANG_KEY); if (l) { setLang(l); langRef.current = l; }
       } catch { /* storage unavailable */ }
       const want = (() => { try { return localStorage.getItem(LANG_KEY) ?? defaultLang(user.timezone); } catch { return defaultLang(user.timezone); } })();
+      const sameAccent = list.filter((v) => v.lang.replace("_", "-") === want);
       const pick = list.find((v) => v.voiceURI === saved)
-        ?? list.find((v) => v.lang.replace("_", "-") === want)
-        ?? list.find((v) => PREFERRED.test(v.name)) ?? list[0] ?? null;
+        ?? (sameAccent.length ? femaleFirst(sameAccent) : null)
+        ?? list.find((v) => PREFERRED.test(v.name))
+        ?? femaleFirst(list) ?? null;
       voiceRef.current = pick; setVoiceURI(pick?.voiceURI ?? "");
     });
+    return voicePicked.current;
+  }, [user.timezone]);
+
+  useEffect(() => {
+    void ensureVoice();
     // Chrome silently pauses long speech after ~15s; nudging resume keeps it going.
     const keepAlive = setInterval(() => { const s = window.speechSynthesis; if (s?.speaking && !s.paused) { s.pause(); s.resume(); } }, 10_000);
-    return () => { alive = false; clearInterval(keepAlive); };
-  }, []);
+    return () => clearInterval(keepAlive);
+  }, [ensureVoice]);
 
   function chooseVoice(uri: string) {
     const v = voices.find((x) => x.voiceURI === uri) ?? null;
@@ -178,7 +206,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
     let alive = true;
     Promise.all([
       api<Session>("/api/gamification/speaking/start", { method: "POST", json: mission ? { mission: true } : { mode, scenario } }),
-      loadVoices(),
+      ensureVoice(),
     ]).then(([s]) => {
       if (!alive) return;
       if (!s) return router.push("/gamification/speaking");
