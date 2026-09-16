@@ -19,6 +19,32 @@ const recognitionCtor = (): RecCtor | null => (typeof window === "undefined" ? n
 
 const VOICE_KEY = "aria.voiceURI";
 const RATE_KEY = "aria.rate";
+const LANG_KEY = "aria.lang";
+
+/**
+ * Accent the recogniser listens for. Using en-US for an Indian-English speaker garbles words
+ * badly, so the default comes from the learner's timezone rather than being hardcoded.
+ */
+const LANGS = [
+  { code: "en-IN", label: "English (India)" },
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "en-AU", label: "English (Australia)" },
+  { code: "en-CA", label: "English (Canada)" },
+  { code: "en-SG", label: "English (Singapore)" },
+  { code: "en-ZA", label: "English (South Africa)" },
+  { code: "en-NG", label: "English (Nigeria)" },
+  { code: "en-PH", label: "English (Philippines)" },
+  { code: "en-IE", label: "English (Ireland)" },
+];
+
+const TZ_LANG: Record<string, string> = {
+  "Asia/Kolkata": "en-IN", "Asia/Calcutta": "en-IN", "Asia/Colombo": "en-IN", "Asia/Karachi": "en-IN",
+  "Asia/Dhaka": "en-IN", "Asia/Kathmandu": "en-IN", "Asia/Dubai": "en-IN", "Asia/Qatar": "en-IN",
+  "Europe/London": "en-GB", "Europe/Dublin": "en-IE", "Australia/Sydney": "en-AU", "Australia/Melbourne": "en-AU",
+  "Asia/Singapore": "en-SG", "Africa/Johannesburg": "en-ZA", "Africa/Lagos": "en-NG", "Asia/Manila": "en-PH",
+};
+const defaultLang = (tz: string) => TZ_LANG[tz] ?? (tz.startsWith("Asia/") ? "en-IN" : tz.startsWith("Europe/") ? "en-GB" : "en-US");
 const PREFERRED = /Google US English|Microsoft Aria|Microsoft Jenny|Samantha|Google UK English Female|Microsoft Zira/i;
 
 /** Voices arrive asynchronously in Chrome; resolve once the list is non-empty (or after a short timeout). */
@@ -51,6 +77,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const [rate, setRate] = useState(1);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceURI, setVoiceURI] = useState<string>("");
+  const [lang, setLang] = useState(() => defaultLang(user.timezone));
   const [level, setLevel] = useState(0);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [ended, setEnded] = useState<{ summary: Summary | null; fluency: number | null; xp: number; xpParts: { source: string; amount: number }[] } | null>(null);
@@ -71,6 +98,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const rateRef = useRef(1);
   const endedRef = useRef(false);
   const silence = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const langRef = useRef(defaultLang(user.timezone));
 
   // ── Voice out ──────────────────────────────────────────────────────────────
   // Chrome occasionally ignores a lone cancel() while utterances are still queued; a second call a beat later is reliable.
@@ -110,8 +138,15 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
       const list = en.length ? en : all;
       setVoices(list);
       let saved: string | null = null;
-      try { saved = localStorage.getItem(VOICE_KEY); const r = Number(localStorage.getItem(RATE_KEY)); if (r) { setRate(r); rateRef.current = r; } } catch { /* storage unavailable */ }
-      const pick = list.find((v) => v.voiceURI === saved) ?? list.find((v) => PREFERRED.test(v.name)) ?? list[0] ?? null;
+      try {
+        saved = localStorage.getItem(VOICE_KEY);
+        const r = Number(localStorage.getItem(RATE_KEY)); if (r) { setRate(r); rateRef.current = r; }
+        const l = localStorage.getItem(LANG_KEY); if (l) { setLang(l); langRef.current = l; }
+      } catch { /* storage unavailable */ }
+      const want = (() => { try { return localStorage.getItem(LANG_KEY) ?? defaultLang(user.timezone); } catch { return defaultLang(user.timezone); } })();
+      const pick = list.find((v) => v.voiceURI === saved)
+        ?? list.find((v) => v.lang.replace("_", "-") === want)
+        ?? list.find((v) => PREFERRED.test(v.name)) ?? list[0] ?? null;
       voiceRef.current = pick; setVoiceURI(pick?.voiceURI ?? "");
     });
     // Chrome silently pauses long speech after ~15s; nudging resume keeps it going.
@@ -124,6 +159,13 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
     voiceRef.current = v; setVoiceURI(uri);
     try { localStorage.setItem(VOICE_KEY, uri); } catch { /* ignore */ }
     stopVoice(); speak(`Hi, I'm ${COACH.name}. This is how I'll sound.`);
+  }
+  function chooseLang(code: string) {
+    setLang(code); langRef.current = code;
+    try { localStorage.setItem(LANG_KEY, code); } catch { /* ignore */ }
+    // Re-open the mic so the new accent takes effect immediately.
+    if (listening.current) { rec.current?.abort(); listening.current = false; setTimeout(() => startListening(false), 150); }
+    toast(`Listening for ${LANGS.find((l) => l.code === code)?.label ?? code}.`, "ok");
   }
   function chooseRate(r: number) {
     setRate(r); rateRef.current = r;
@@ -169,7 +211,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
     if (!Ctor || listening.current || !sessionRef.current || endedRef.current) return;
     if (cutAria) interrupt();
     const r = new Ctor();
-    r.lang = "en-US"; r.interimResults = true; r.continuous = true;
+    r.lang = langRef.current; r.interimResults = true; r.continuous = true;
     finalText.current = ""; talkStart.current = Date.now();
     r.onresult = (e) => {
       let interim = "";
@@ -298,6 +340,9 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded-xl bg-canvas px-3 py-1.5 font-mono font-semibold">{session?.missionDate ? `${fmtClock(Math.max(0, missionLimit - elapsed))} left` : fmtClock(elapsed)}</span>
+              <select value={lang} onChange={(e) => chooseLang(e.target.value)} className="input w-auto py-1.5 text-xs" aria-label="Your accent" title="The accent the microphone listens for — pick yours for accurate transcription">
+                {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+              </select>
               <select value={voiceURI} onChange={(e) => chooseVoice(e.target.value)} className="input w-auto max-w-56 py-1.5 text-xs" aria-label={`${COACH.name}'s voice`} title={`${COACH.name}'s voice (saved on this device)`}>
                 {voices.length === 0 && <option value="">Loading voices…</option>}
                 {voices.map((v) => <option key={v.voiceURI} value={v.voiceURI}>{voiceLabel(v)}</option>)}
