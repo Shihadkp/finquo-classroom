@@ -6,15 +6,16 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npx prisma generate && npx prisma db push && npm run build
-    startCommand: npm start
+    # RENDER_EXTERNAL_URL is injected by Render and is the service's real https URL, so NextAuth's
+    # callback/redirect base is always right — no need to paste it by hand after the first deploy.
+    startCommand: NEXTAUTH_URL=$RENDER_EXTERNAL_URL npm start
     healthCheckPath: /login
     envVars:
       - key: NODE_VERSION
         value: "22"
       - key: DATABASE_URL          # Neon Postgres connection string (postgresql://…?sslmode=require)
         sync: false
-      - key: NEXTAUTH_URL          # https://<this service>.onrender.com
-        sync: false
+      # NEXTAUTH_URL is set from RENDER_EXTERNAL_URL in startCommand — don't add it here.
       - key: NEXTAUTH_SECRET
         generateValue: true
       - key: AGORA_APP_ID

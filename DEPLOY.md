@@ -42,7 +42,7 @@ git push -u origin main
 1. render.com → sign up with GitHub → **New → Blueprint** → pick the repo. Render reads `render.yaml`.
 2. Fill in the environment variables it asks for. Copy them from your local `.env`, except:
    - `DATABASE_URL` = the Neon string
-   - `NEXTAUTH_URL` = `https://<service-name>.onrender.com` (shown on the service page)
+   - `NEXTAUTH_URL` is not asked for: the start command sets it from Render's own `RENDER_EXTERNAL_URL`
    - `NEXTAUTH_SECRET` is generated for you
 3. Click **Apply**. The first build takes 3–5 minutes. The build runs `prisma db push`, so future schema changes deploy themselves.
 
