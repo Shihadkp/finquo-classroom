@@ -140,7 +140,11 @@ export const emptyCrossclimb = (p: CrossclimbPublic): CrossclimbState => ({ answ
 const oneLetterApart = (a: string, b: string) => a.length === b.length && a.length > 0 && [...a].filter((ch, i) => ch !== b[i]).length === 1;
 
 export function CrossclimbBoard({ puzzle, state, solution, onChange }: { puzzle: CrossclimbPublic; state: CrossclimbState; solution?: { words: string[]; order: number[] } | null; onChange?: (s: CrossclimbState) => void }) {
-  const filled = state.answers.every((a) => a.length >= 3);
+  // Tolerate a state saved by an older build: never assume the arrays are there.
+  const answers = state?.answers ?? puzzle.clues.map(() => "");
+  const order = state?.order?.length === puzzle.clues.length ? state.order : puzzle.clues.map((_, i) => i);
+  state = { ...state, answers, order };
+  const filled = answers.every((a) => a.length >= 3);
   const move = (pos: number, dir: -1 | 1) => {
     if (!onChange) return;
     const order = [...state.order]; const j = pos + dir;

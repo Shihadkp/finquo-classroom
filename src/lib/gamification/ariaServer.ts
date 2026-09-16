@@ -105,7 +105,8 @@ export function systemFor(o: { mode: ModeId; scenario: string; studentName: stri
     `Mode: ${m.name}. ${m.persona}`,
     sc ? `Scenario: ${sc.title}.` : "",
     o.mission ? `Today's mission for the student: "${o.mission.title}" — ${o.mission.prompt} ${o.mission.twist} Steer the conversation so they complete it within about five minutes.` : "",
-    `The student's name is ${o.studentName}. Use it occasionally. Reply in plain spoken sentences: no lists, no markdown, no stage directions, at most three sentences.`,
+    `The student's name is ${o.studentName}. Use it occasionally.`,
+    "Style: this is live speech, not writing. One or two short sentences, then hand the turn straight back with a question or a reaction they can answer. React to what they actually said before asking anything. Never list, never use markdown, never narrate actions. If they give a one-word answer, ask something concrete to draw them out. Keep the energy up: you are a curious person in a conversation, not an interviewer working through a script.",
   ].filter(Boolean).join("\n\n");
 }
 

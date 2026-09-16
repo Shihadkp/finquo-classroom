@@ -78,7 +78,7 @@ export async function completeAttempt(user: SessionUser, game: GameId, answer: u
   const MAX_MISTAKES = 3;
 
   if (!correct && !giveUp && a.mistakes + 1 < MAX_MISTAKES) {
-    const updated = await db.puzzleAttempt.update({ where: { id: a.id }, data: { mistakes: { increment: 1 }, state: JSON.stringify(answer) }, include: { puzzle: true } });
+    const updated = await db.puzzleAttempt.update({ where: { id: a.id }, data: { mistakes: { increment: 1 } }, include: { puzzle: true } });
     return { attempt: attemptView(updated), correct: false, xp: [] as { source: string; amount: number }[] };
   }
 
@@ -99,7 +99,7 @@ export async function completeAttempt(user: SessionUser, game: GameId, answer: u
   const [updated] = await db.$transaction([
     db.puzzleAttempt.update({
       where: { id: a.id },
-      data: { status: correct ? "COMPLETED" : "FAILED", completedAt: new Date(), timeMs, mistakes, accuracy, xp, state: JSON.stringify(answer ?? {}) },
+      data: { status: correct ? "COMPLETED" : "FAILED", completedAt: new Date(), timeMs, mistakes, accuracy, xp },
       include: { puzzle: true },
     }),
     db.playerSkill.update({ where: { id: skill.id }, data: { level: ns.level, winStreak: ns.winStreak, recent: JSON.stringify(ns.recent) } }),

@@ -70,6 +70,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const rateRef = useRef(1);
   const endedRef = useRef(false);
+  const silence = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Voice out ──────────────────────────────────────────────────────────────
   // Chrome occasionally ignores a lone cancel() while utterances are still queued; a second call a beat later is reliable.
@@ -176,13 +177,21 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) finalText.current += t + " "; else interim += t;
       }
-      setPartial((finalText.current + interim).trim());
-      // Auto mode: a final result means the student paused → send it.
-      if (vadRef.current && finalText.current.trim() && !interim) r.stop();
+      const heard = (finalText.current + interim).trim();
+      setPartial(heard);
+      if (!vadRef.current || !heard) return;
+      // Stop after a short pause rather than waiting for Chrome to finalise, which can take seconds.
+      // Interim text is kept as the utterance if the pause arrives first.
+      if (silence.current) clearTimeout(silence.current);
+      silence.current = setTimeout(() => {
+        if (!finalText.current.trim() && interim) finalText.current = interim;
+        r.stop();
+      }, 900);
     };
     r.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") toast(`Mic error: ${e.error}`); };
     r.onend = () => {
       listening.current = false;
+      if (silence.current) { clearTimeout(silence.current); silence.current = null; }
       const text = finalText.current.trim();
       setPartial("");
       if (text) void send(text, (Date.now() - talkStart.current) / 1000);
@@ -193,7 +202,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interrupt, toast]);
 
-  const stopListening = () => { rec.current?.stop(); };
+  const stopListening = () => { if (silence.current) { clearTimeout(silence.current); silence.current = null; } rec.current?.stop(); };
 
   /** Auto mode: open the mic only once Aria has finished talking, so she doesn't hear herself. */
   const listenAfterVoice = useCallback(() => {
