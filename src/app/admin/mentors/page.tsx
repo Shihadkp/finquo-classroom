@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -90,7 +91,10 @@ export default async function MentorsPage() {
                       ) : <span className="text-neutral-300">—</span>}
                     </td>
                     <td className="td text-right">
-                      <MentorSlots mentor={{ id: m.id, name: m.name, timezone: m.timezone }} blocks={m.availability} user={user} />
+                      <span className="flex justify-end gap-2">
+                        <MentorSlots mentor={{ id: m.id, name: m.name, timezone: m.timezone }} blocks={m.availability} user={user} />
+                        <Link href={`/availability?mentorId=${m.id}`} className="btn-ghost px-3 py-1.5 text-xs">Edit hours</Link>
+                      </span>
                     </td>
                   </tr>
                 ))}

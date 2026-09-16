@@ -15,6 +15,7 @@ function linksFor(user: SessionUser): Item[] {
       { href: "/schedule", label: "Schedule", icon: "calendar" },
       { href: "/admin/students", label: "Students", icon: "cap" },
       { href: "/admin/mentors", label: "Mentors", icon: "users" },
+      { href: "/availability", label: "Availability", icon: "clock" },
       { href: "/admin/programs", label: "Programs", icon: "book" },
       { href: "/recordings", label: "Recordings", icon: "video" },
       { href: "/gamification", label: "Gamification", icon: "spark" },
