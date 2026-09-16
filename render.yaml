@@ -1,0 +1,39 @@
+# Render blueprint: one always-on Node web service. Free plan sleeps after 15 min idle (first request takes ~30 s to wake).
+# Import in the Render dashboard: New → Blueprint → pick this repo. Fill the sync:false values when prompted.
+services:
+  - type: web
+    name: classroom
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npx prisma generate && npx prisma db push && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL          # Neon Postgres connection string (postgresql://…?sslmode=require)
+        sync: false
+      - key: NEXTAUTH_URL          # https://<this service>.onrender.com
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false
+      - key: R2_ENDPOINT           # Backblaze B2 S3 endpoint, e.g. https://s3.us-west-004.backblazeb2.com
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: ARIA_BASE_URL         # https://api.groq.com/openai/v1
+        sync: false
+      - key: ARIA_API_KEY
+        sync: false
+      - key: ARIA_MODEL            # openai/gpt-oss-120b
+        sync: false
+      - key: ARIA_REASONING_EFFORT # low
+        sync: false

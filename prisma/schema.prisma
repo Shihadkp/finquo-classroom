@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Postgres (Neon). Enums are stored as strings, so the same schema also runs on sqlite for local-only work.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  passwordHash String
+  role         String // ADMIN | MENTOR | STUDENT
+  timezone     String  @default("Asia/Kolkata")
+  programId    String? // students only: the program they're enrolled in
+
+  mentorClasses  Class[]        @relation("MentorClasses")
+  studentClasses Class[]        @relation("StudentClasses")
+  availability   Availability[]
+  program        Program?       @relation(fields: [programId], references: [id])
+
+  // Gamification (additive)
+  attempts         PuzzleAttempt[]
+  skills           PlayerSkill[]
+  streak           DailyStreak?
+  xpLedger         GameXP[]
+  speakingSessions SpeakingSession[]
+}
+
+model Class {
+  id          String    @id @default(cuid())
+  title       String
+  mentorId    String
+  studentId   String
+  startAt     DateTime
+  endAt       DateTime
+  status      String    @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
+  channelName String    @unique
+  completedAt DateTime?
+  notes       String?
+  sessionId   String? // which program session this class delivers, if any
+  studentJoinedAt DateTime? // first time each side entered the room — the attendance record
+  mentorJoinedAt  DateTime?
+
+  mentor    User       @relation("MentorClasses", fields: [mentorId], references: [id])
+  student   User       @relation("StudentClasses", fields: [studentId], references: [id])
+  recording Recording?
+  session   ProgramSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([mentorId, startAt])
+  @@index([studentId, startAt])
+}
+
+model Availability {
+  id          String @id @default(cuid())
+  mentorId    String
+  weekday     Int // 0 = Sunday … 6 = Saturday, in the mentor's timezone
+  startMinute Int // minutes from midnight
+  endMinute   Int
+
+  mentor User @relation(fields: [mentorId], references: [id])
+
+  @@index([mentorId])
+}
+
+model Recording {
+  id          String    @id @default(cuid())
+  classId     String    @unique
+  status      String    @default("RECORDING") // RECORDING | UPLOADED | PROCESSING | READY | FAILED
+  uploadId    String?
+  rawKey      String?
+  key         String?
+  etags       String    @default("[]") // JSON array of {PartNumber, ETag}
+  sizeBytes   Int       @default(0)
+  durationSec Int?
+  startedAt   DateTime  @default(now())
+  stoppedAt   DateTime?
+  error       String?
+
+  class Class @relation(fields: [classId], references: [id])
+}
+
+model Program {
+  id       String           @id @default(cuid())
+  name     String
+  sessions ProgramSession[]
+  students User[]
+}
+
+model ProgramSession {
+  id        String  @id @default(cuid())
+  programId String
+  order     Int
+  title     String
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  classes Class[]
+
+  @@index([programId, order])
+}
+
+// ─── Gamification ─────────────────────────────────────────────────────────────
+// Dates are YYYY-MM-DD strings in the player's own timezone (new day at their local midnight).
+
+model DailyPuzzle {
+  id    String @id @default(cuid())
+  game  String // queens | crossclimb | pinpoint | tango
+  date  String
+  level Int
+  seed  String
+  data  String // JSON { public, solution } — solution never leaves the server until the attempt is over
+
+  attempts PuzzleAttempt[]
+
+  @@unique([game, date, level])
+}
+
+model PuzzleAttempt {
+  id          String    @id @default(cuid())
+  userId      String
+  puzzleId    String
+  game        String
+  date        String
+  status      String    @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED | FAILED
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  timeMs      Int?
+  mistakes    Int       @default(0)
+  hints       Int       @default(0)
+  accuracy    Int? // 0–100, derived from mistakes
+  xp          Int       @default(0)
+  state       String    @default("{}") // JSON partial answer so a reload resumes the same attempt
+
+  user   User        @relation(fields: [userId], references: [id])
+  puzzle DailyPuzzle @relation(fields: [puzzleId], references: [id])
+
+  @@unique([userId, game, date])
+  @@index([puzzleId, status, timeMs])
+}
+
+model PlayerSkill {
+  id        String @id @default(cuid())
+  userId    String
+  game      String
+  level     Int    @default(1) // 1..10 hidden difficulty
+  winStreak Int    @default(0)
+  recent    String @default("[]") // JSON of the last 5 days: { won: boolean, accuracy: number }[]
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, game])
+}
+
+model DailyStreak {
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  current    Int     @default(0)
+  best       Int     @default(0)
+  shields    Int     @default(1)
+  missedDays Int     @default(0)
+  lastActive String? // YYYY-MM-DD of the last day that counted
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model GameXP {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String
+  source    String // complete | perfect | no_hint | streak | all_games | speaking | mission
+  amount    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+}
+
+model SpeakingSession {
+  id          String    @id @default(cuid())
+  userId      String
+  mode        String // casual | interview | office | debate
+  scenario    String
+  missionDate String? // set when this session is the day's speaking mission
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  transcript  String    @default("[]") // JSON { role, text, at }[]
+  feedback    String    @default("[]") // JSON Feedback[] — one per student turn, never spoken
+  summary     String? // JSON written at end of session
+  fluency     Int?
+  xp          Int       @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, startedAt])
+}
