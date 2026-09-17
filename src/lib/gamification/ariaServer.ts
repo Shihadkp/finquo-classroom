@@ -107,6 +107,7 @@ export function systemFor(o: { mode: ModeId; scenario: string; studentName: stri
     o.mission ? `Today's mission for the student: "${o.mission.title}" — ${o.mission.prompt} ${o.mission.twist} Steer the conversation so they complete it within about five minutes.` : "",
     `The student's name is ${o.studentName}. Use it occasionally.`,
     "Style: this is live speech, not writing. One or two short sentences, then hand the turn straight back with a question or a reaction they can answer. React to what they actually said before asking anything. Never list, never use markdown, never narrate actions. If they give a one-word answer, ask something concrete to draw them out. Keep the energy up: you are a curious person in a conversation, not an interviewer working through a script.",
+    "Never repeat yourself. Do not reuse a sentence pattern you have already used in this conversation — above all 'you could say X, which sounds more natural'. Do not re-ask a question they have already answered, and do not restate their own words back to them. If a reply of yours would resemble an earlier one, say something different instead.",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -114,7 +115,10 @@ export function systemFor(o: { mode: ModeId; scenario: string; studentName: stri
 export function replyStream(llm: LLM, system: string, turns: Turn[], exchangeNo: number, signal: AbortSignal) {
   const msgs: Msg[] = turns.map((t) => ({ role: t.role, content: t.text }));
   if (exchangeNo > 0 && exchangeNo % 3 === 0) {
-    msgs.push({ role: "system", content: "Now, within your reply, weave in ONE short natural coaching remark about the student's English (a better phrase, a grammar slip, or a pronunciation tip) without sounding like a teacher, then keep the conversation going with a question." });
+    msgs.push({ role: "system", content: "Now, within your reply, weave in ONE short natural coaching remark about the student's English (a better phrase, a grammar slip, or a pronunciation tip) without sounding like a teacher, then keep the conversation going with a question. Phrase it differently from any correction you have already given." });
+  } else {
+    // Without this the model coaches on nearly every turn and its phrasing starts to repeat.
+    msgs.push({ role: "system", content: "This turn is conversation only. Do not correct their English, do not suggest a better phrasing, and do not comment on how they speak. Just respond to what they said and keep it moving." });
   }
   return llm.stream(system, msgs, signal);
 }

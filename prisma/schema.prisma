@@ -193,6 +193,7 @@ model SpeakingSession {
   summary     String? // JSON written at end of session
   fluency     Int?
   xp          Int       @default(0)
+  updatedAt   DateTime  @default(now()) @updatedAt // compare-and-swap guard: two overlapping turns must not clobber each other
 
   user User @relation(fields: [userId], references: [id])
 

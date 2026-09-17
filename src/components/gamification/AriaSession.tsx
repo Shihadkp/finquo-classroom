@@ -38,6 +38,14 @@ const LANGS = [
   { code: "en-IE", label: "English (Ireland)" },
 ];
 
+/** Loose word overlap, 0..1. Used to spot the microphone hearing Quo's own reply back. */
+function similarity(a: string, b: string) {
+  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2);
+  const A = words(a), B = new Set(words(b));
+  if (A.length < 3 || B.size < 3) return 0;
+  return A.filter((w) => B.has(w)).length / A.length;
+}
+
 const TZ_LANG: Record<string, string> = {
   "Asia/Kolkata": "en-IN", "Asia/Calcutta": "en-IN", "Asia/Colombo": "en-IN", "Asia/Karachi": "en-IN",
   "Asia/Dhaka": "en-IN", "Asia/Kathmandu": "en-IN", "Asia/Dubai": "en-IN", "Asia/Qatar": "en-IN",
@@ -105,6 +113,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   const rateRef = useRef(1);
   const speakToken = useRef(0);
   const endedRef = useRef(false);
+  const lastReply = useRef("");
   const silence = useRef<ReturnType<typeof setTimeout> | null>(null);
   const langRef = useRef(defaultLang(user.timezone));
 
@@ -264,6 +273,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
       listening.current = false;
       if (silence.current) { clearTimeout(silence.current); silence.current = null; }
       const text = finalText.current.trim();
+      finalText.current = ""; // consumed — a second onend must never resend it
       setPartial("");
       if (text) void send(text, (Date.now() - talkStart.current) / 1000);
       else if (vadRef.current && !abort.current) setTimeout(() => startListening(false), 250);
@@ -314,9 +324,18 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
   // ── One exchange ───────────────────────────────────────────────────────────
   async function send(text: string, seconds: number) {
     const s = sessionRef.current; if (!s) return;
+    // Don't feed Quo her own words back: that makes her answer herself, which looks like repeating.
+    if (similarity(text, lastReply.current) > 0.6) {
+      setPartial("");
+      if (vadRef.current) listenAfterVoice();
+      return;
+    }
     const userTurn: Turn = { role: "user", text, at: new Date().toISOString() };
     setTurns((t) => [...t, userTurn]);
     setStatus("thinking"); setStreaming(""); spokenUpTo.current = 0;
+    // Abort any turn still in flight. Two overlapping requests read the same stored history and the
+    // later write clobbered the earlier exchange, so the coach re-asked a question she had just asked.
+    abort.current?.abort();
     const ac = new AbortController(); abort.current = ac;
     let full = "";
     try {
@@ -330,7 +349,7 @@ export function AriaSession({ user, mode, scenario, mission }: { user: SessionUs
         for (const ev of events) {
           const type = /^event: (.+)$/m.exec(ev)?.[1]; const data = JSON.parse(/^data: (.+)$/m.exec(ev)?.[1] ?? "{}");
           if (type === "delta") { full += data.text; setStreaming(full); speakNewSentences(full); }
-          else if (type === "reply") { speakNewSentences(full, true); setStreaming(""); if (full.trim()) setTurns((t) => [...t, { role: "assistant", text: full.trim(), at: new Date().toISOString() }]); }
+          else if (type === "reply") { speakNewSentences(full, true); setStreaming(""); lastReply.current = full.trim(); if (full.trim()) setTurns((t) => [...t, { role: "assistant", text: full.trim(), at: new Date().toISOString() }]); }
           else if (type === "feedback") { setFeedback(data.feedback); setCount(data.exchangeNo); }
           else if (type === "error") toast(data.message);
         }
